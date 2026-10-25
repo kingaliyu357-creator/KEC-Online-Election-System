@@ -1,74 +1,77 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>KEC | Online Election</title>
+  <title>KEBBI ELITE CIRCLE - Online Election</title>
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-  <header>
-    <div class="brand">KEC <span>KEBBI ELITE CIRCLE</span></div>
+  <header class="site-header">
+    <h1>KEBBI ELITE CIRCLE</h1>
     <p>ONLINE ELECTION SYSTEM</p>
   </header>
 
-  <main>
-    <section class="hero">
-      <p class="gold">LEADERSHIP • UNITY • PROGRESS</p>
-      <h1>Your Voice.<br><span>Your Choice.</span></h1>
-      <p>Welcome to the Kebbi Elite Circle election portal.</p>
-      <a class="button" href="#apply">Apply as Candidate</a>
-      <a class="button secondary" href="#vote">Voting Information</a>
-    </section>
-
-    <section class="card" id="apply">
+  <main class="container">
+    <section id="apply" class="card">
       <h2>Candidate Application</h2>
-      <p>Submit your details for review by the election administrators.</p>
-      <form>
-        <label>Full Name *
-          <input type="text" name="fullName" required>
+      <p>Complete this form to apply for your desired position.</p>
+
+      <form id="application-form">
+        <label for="fullName">Full Name</label>
+        <input id="fullName" name="fullName" type="text" required>
+
+        <label for="email">Email Address</label>
+        <input id="email" name="email" type="email" required>
+
+        <label for="phone">Phone Number</label>
+        <input id="phone" name="phone" type="tel" required>
+
+        <label for="position">Position You Are Applying For</label>
+        <select id="position" name="position" required>
+          <option value="">Select a position</option>
+          <option>President</option>
+          <option>Vice President</option>
+          <option>General Secretary</option>
+          <option>Assistant General Secretary</option>
+          <option>Treasurer</option>
+          <option>Financial Secretary</option>
+          <option>Public Relations Officer (PRO)</option>
+          <option>Event Coordinator</option>
+          <option>Welfare Officer</option>
+          <option>Women Leader</option>
+          <option>Assistant Women Leader</option>
+          <option>First Lady</option>
+          <option>Chief Protocol Officer</option>
+          <option>Media and Publicity Officer</option>
+        </select>
+
+        <label for="photo">Upload Your Photograph</label>
+        <input id="photo" name="photo" type="file" accept="image/*" required>
+
+        <label for="contribution">What Will You Contribute to KEC?</label>
+        <textarea id="contribution" name="contribution" rows="4" required></textarea>
+
+        <label for="pledge">Integrity Pledge</label>
+        <p>I pledge to be honest, responsible, loyal, and fair to KEC.</p>
+        <label class="pledge-label">
+          <input type="checkbox" name="pledge" required>
+          I accept the integrity pledge.
         </label>
-        <label>Email Address *
-          <input type="email" name="email" required>
-        </label>
-        <label>Phone Number
-          <input type="tel" name="phone">
-        </label>
-        <label>Member ID (if any)
-          <input type="text" name="memberId">
-        </label>
-        <label>Position You Wish to Contest *
-          <select name="position" required>
-            <option value="">Choose a position</option>
-            <option>President</option>
-            <option>Vice President</option>
-            <option>Secretary</option>
-            <option>Treasurer</option>
-          </select>
-        </label>
-        <label>Your Experience
-          <textarea name="experience" rows="3"></textarea>
-        </label>
-        <label>Your Manifesto *
-          <textarea name="manifesto" rows="5" required></textarea>
-        </label>
+
         <button type="submit">Submit Application</button>
       </form>
-      <p class="notice">Applications require administrator review. This form is a visual prototype and does not submit applications yet.</p>
-    </section>
 
-    <section class="card" id="vote">
-      <h2>Voting Portal</h2>
-      <p>Voting is not open yet. Official election dates will be announced by KEC administrators.</p>
-      <p class="notice">Anonymous voting cannot guarantee one vote per person.</p>
-    </section>
-
-    <section class="card" id="admin">
-      <h2>Admin Dashboard</h2>
-      <p>Reserved for authorized election administrators. Secure access is not yet implemented.</p>
+      <p id="form-message">
+        Note: Application submission will be enabled after the backend is connected.
+      </p>
     </section>
   </main>
 
-  <footer>KEBBI ELITE CIRCLE · KEC<br>Election System Prototype</footer>
+  <footer>
+    <p>KEBBI ELITE CIRCLE © 2026</p>
+  </footer>
 </body>
-  </html>
+        </html>
+  
