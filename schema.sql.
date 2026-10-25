@@ -1,0 +1,18 @@
+
+CREATE TABLE IF NOT EXISTS candidates (
+    id SERIAL PRIMARY KEY,
+    full_name VARCHAR(150) NOT NULL,
+    email VARCHAR(255) NOT NULL UNIQUE,
+    position VARCHAR(100) NOT NULL,
+    photo_url TEXT,
+    application_status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    candidate_code VARCHAR(30) UNIQUE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS votes (
+    id SERIAL PRIMARY KEY,
+    candidate_id INTEGER NOT NULL REFERENCES candidates(id),
+    voter_token VARCHAR(100) NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
