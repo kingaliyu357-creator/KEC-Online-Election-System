@@ -153,6 +153,7 @@ app.post("/api/applications", async (req, res) => {
   }
 });
 
+/* SERVER HEALTH */
 app.get("/api/health", (req, res) => {
   res.json({
     status: "ok",
@@ -160,6 +161,7 @@ app.get("/api/health", (req, res) => {
   });
 });
 
+/* DATABASE HEALTH */
 app.get("/api/db-health", async (req, res) => {
   try {
     const result = await pool.query("SELECT NOW() AS database_time");
@@ -177,6 +179,7 @@ app.get("/api/db-health", async (req, res) => {
   }
 });
 
+/* ADMIN LOGIN */
 app.post("/api/admin/login", (req, res) => {
   const expectedPassword = process.env.ADMIN_PASSWORD;
   const suppliedPassword = req.body?.password;
@@ -197,10 +200,11 @@ app.post("/api/admin/login", (req, res) => {
   });
 });
 
+/* ADMIN: LIST APPLICATIONS INCLUDING CANDIDATE ID */
 app.get("/api/admin/applications", requireAdmin, async (req, res) => {
   try {
     const result = await pool.query(`
-      SELECT id, full_name, email, phone, position,
+      SELECT id, candidate_id, full_name, email, phone, position,
              contribution, status, created_at
       FROM candidates
       ORDER BY created_at DESC
@@ -215,38 +219,71 @@ app.get("/api/admin/applications", requireAdmin, async (req, res) => {
   }
 });
 
+/* ADMIN: APPROVE AND ASSIGN A STABLE CANDIDATE ID */
 app.post("/api/admin/applications/:id/approve", requireAdmin, async (req, res) => {
-  try {
-    const candidateId =
-      `KEC-${new Date().getFullYear()}-` +
-      crypto.randomBytes(4).toString("hex").toUpperCase();
+  const client = await pool.connect();
 
-    const result = await pool.query(
-      `UPDATE candidates
-       SET status = 'approved', candidate_id = $1
-       WHERE id = $2 AND status = 'pending'
-       RETURNING id, candidate_id, full_name, position`,
-      [candidateId, req.params.id]
+  try {
+    await client.query("BEGIN");
+
+    const found = await client.query(
+      `SELECT id, candidate_id, full_name, position, status
+       FROM candidates
+       WHERE id = $1
+       FOR UPDATE`,
+      [req.params.id]
     );
 
-    if (result.rowCount === 0) {
+    if (found.rowCount === 0) {
+      await client.query("ROLLBACK");
       return res.status(404).json({
-        message: "Pending application not found."
+        message: "Application not found."
       });
     }
 
-    res.json({
+    const candidate = found.rows[0];
+
+    if (candidate.status === "rejected") {
+      await client.query("ROLLBACK");
+      return res.status(409).json({
+        message: "This application has been rejected."
+      });
+    }
+
+    let candidateId = candidate.candidate_id;
+
+    if (!candidateId) {
+      candidateId =
+        `KEC-${new Date().getFullYear()}-` +
+        crypto.randomBytes(4).toString("hex").toUpperCase();
+    }
+
+    const updated = await client.query(
+      `UPDATE candidates
+       SET status = 'approved', candidate_id = $1
+       WHERE id = $2
+       RETURNING id, candidate_id, full_name, position, status`,
+      [candidateId, req.params.id]
+    );
+
+    await client.query("COMMIT");
+
+    return res.json({
       message: "Candidate approved. Email delivery is not configured yet.",
-      candidate: result.rows[0]
+      candidate: updated.rows[0]
     });
   } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
     console.error("Approval error:", error.message);
-    res.status(500).json({
+    return res.status(500).json({
       message: "Unable to approve candidate."
     });
+  } finally {
+    client.release();
   }
 });
 
+/* ADMIN: REJECT APPLICATION */
 app.post("/api/admin/applications/:id/reject", requireAdmin, async (req, res) => {
   try {
     const result = await pool.query(
@@ -275,6 +312,7 @@ app.post("/api/admin/applications/:id/reject", requireAdmin, async (req, res) =>
   }
 });
 
+/* AVAILABLE POSITIONS */
 app.get("/api/positions", (req, res) => {
   res.json([
     "President",
@@ -294,6 +332,7 @@ app.get("/api/positions", (req, res) => {
   ]);
 });
 
+/* APPROVED CANDIDATES */
 app.get("/api/candidates", async (req, res) => {
   try {
     const result = await pool.query(`
@@ -312,6 +351,7 @@ app.get("/api/candidates", async (req, res) => {
   }
 });
 
+/* PUBLIC RESULTS */
 app.get("/api/results", async (req, res) => {
   try {
     const result = await pool.query(`
@@ -333,10 +373,12 @@ app.get("/api/results", async (req, res) => {
   }
 });
 
+/* FRONTEND */
 app.get("*", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
+/* START SERVER */
 initializeDatabase()
   .then(() => {
     app.listen(PORT, () => {
