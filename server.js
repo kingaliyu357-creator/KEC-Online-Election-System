@@ -398,6 +398,78 @@ app.get("/api/candidates", async (req, res) => {
   }
 });
 
+
+/* CAST VOTE */
+app.post("/api/vote", async (req, res) => {
+  try {
+    const email = String(req.body.email || "")
+      .trim()
+      .toLowerCase();
+
+    const position = String(req.body.position || "")
+      .trim();
+
+    const candidateId = Number(req.body.candidate_id);
+
+    // Validate input
+    if (
+      !email ||
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
+      !position ||
+      !Number.isInteger(candidateId) ||
+      candidateId <= 0
+    ) {
+      return res.status(400).json({
+        message: "Please provide a valid email, position, and candidate."
+      });
+    }
+
+    // Confirm candidate is approved for this position
+    const candidate = await pool.query(
+      `SELECT id, position
+       FROM candidates
+       WHERE id = $1 AND status = 'approved'`,
+      [candidateId]
+    );
+
+    if (candidate.rows.length === 0) {
+      return res.status(404).json({
+        message: "Candidate not found or not approved."
+      });
+    }
+
+    if (candidate.rows[0].position !== position) {
+      return res.status(400).json({
+        message: "The selected candidate does not match this position."
+      });
+    }
+
+    // Save vote; database prevents duplicate email + position
+    await pool.query(
+      `INSERT INTO votes (voter_email, position, candidate_id)
+       VALUES ($1, $2, $3)`,
+      [email, position, candidateId]
+    );
+
+    return res.status(201).json({
+      message: "Your vote has been submitted successfully."
+    });
+  } catch (error) {
+    if (error.code === "23505") {
+      return res.status(409).json({
+        message: "This email has already voted for this position."
+      });
+    }
+
+    console.error("Voting error:", error.message);
+
+    return res.status(500).json({
+      message: "Unable to submit your vote. Please try again."
+    });
+  }
+});
+
+
 /* PUBLIC RESULTS */
 app.get("/api/results", async (req, res) => {
   try {
