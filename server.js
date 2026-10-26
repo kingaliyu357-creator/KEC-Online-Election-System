@@ -76,23 +76,82 @@ function requireAdmin(req, res, next) {
     .update(String(expires))
     .digest();
 
-  let received;
-
-  try {
-    received = Buffer.from(signature, "hex");
-  } catch {
-    return res.status(401).json({ message: "Invalid admin session." });
-  }
+  const received = Buffer.from(signature, "hex");
 
   if (
     received.length !== expected.length ||
     !crypto.timingSafeEqual(received, expected)
   ) {
-    return res.status(401).json({ message: "Invalid admin session." });
+    return res.status(401).json({
+      message: "Invalid admin session."
+    });
   }
 
   next();
 }
+
+/* CANDIDATE APPLICATION SUBMISSION */
+app.post("/api/applications", async (req, res) => {
+  try {
+    const {
+      fullName,
+      email,
+      phone,
+      position,
+      photo,
+      contribution,
+      pledge
+    } = req.body || {};
+
+    if (
+      typeof fullName !== "string" || !fullName.trim() ||
+      typeof email !== "string" || !email.trim() ||
+      typeof phone !== "string" || !phone.trim() ||
+      typeof position !== "string" || !position.trim() ||
+      typeof contribution !== "string" || !contribution.trim() ||
+      pledge !== true
+    ) {
+      return res.status(400).json({
+        message: "Please complete all fields and accept the integrity pledge."
+      });
+    }
+
+    if (
+      typeof photo !== "string" ||
+      !/^data:image\/(jpeg|png|webp|gif);base64,/i.test(photo) ||
+      photo.length > 2800000
+    ) {
+      return res.status(400).json({
+        message: "Please upload a valid image smaller than 2 MB."
+      });
+    }
+
+    const result = await pool.query(
+      `INSERT INTO candidates
+       (full_name, email, phone, position, photo_data, contribution)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id, full_name, status, created_at`,
+      [
+        fullName.trim(),
+        email.trim().toLowerCase(),
+        phone.trim(),
+        position.trim(),
+        photo,
+        contribution.trim()
+      ]
+    );
+
+    return res.status(201).json({
+      message: "Application submitted successfully. Await admin review.",
+      application: result.rows[0]
+    });
+  } catch (error) {
+    console.error("Application submission error:", error.message);
+    return res.status(500).json({
+      message: "Unable to submit application. Please try again."
+    });
+  }
+});
 
 app.get("/api/health", (req, res) => {
   res.json({
@@ -120,7 +179,7 @@ app.get("/api/db-health", async (req, res) => {
 
 app.post("/api/admin/login", (req, res) => {
   const expectedPassword = process.env.ADMIN_PASSWORD;
-  const suppliedPassword = req.body.password;
+  const suppliedPassword = req.body?.password;
 
   if (
     !expectedPassword ||
@@ -243,10 +302,13 @@ app.get("/api/candidates", async (req, res) => {
       WHERE status = 'approved'
       ORDER BY position, full_name
     `);
+
     res.json(result.rows);
   } catch (error) {
     console.error("Candidate list error:", error.message);
-    res.status(500).json({ message: "Unable to load candidates." });
+    res.status(500).json({
+      message: "Unable to load candidates."
+    });
   }
 });
 
@@ -261,10 +323,13 @@ app.get("/api/results", async (req, res) => {
       GROUP BY c.id
       ORDER BY c.position, vote_count DESC, c.full_name
     `);
+
     res.json(result.rows);
   } catch (error) {
     console.error("Results error:", error.message);
-    res.status(500).json({ message: "Unable to load results." });
+    res.status(500).json({
+      message: "Unable to load results."
+    });
   }
 });
 
