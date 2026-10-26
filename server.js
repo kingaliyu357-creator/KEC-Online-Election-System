@@ -231,15 +231,18 @@ app.get("/api/admin/applications", requireAdmin, async (req, res) => {
   }
 });
 
+
 /* ADMIN: APPROVE AND ASSIGN A STABLE CANDIDATE ID */
 app.post("/api/admin/applications/:id/approve", requireAdmin, async (req, res) => {
   const client = await pool.connect();
+  let candidate;
+  let emailSent = false;
 
   try {
     await client.query("BEGIN");
 
     const found = await client.query(
-      `SELECT id, candidate_id, full_name, position, status
+      `SELECT id, candidate_id, full_name, email, position, status
        FROM candidates
        WHERE id = $1
        FOR UPDATE`,
@@ -253,7 +256,7 @@ app.post("/api/admin/applications/:id/approve", requireAdmin, async (req, res) =
       });
     }
 
-    const candidate = found.rows[0];
+    candidate = found.rows[0];
 
     if (candidate.status === "rejected") {
       await client.query("ROLLBACK");
@@ -274,16 +277,13 @@ app.post("/api/admin/applications/:id/approve", requireAdmin, async (req, res) =
       `UPDATE candidates
        SET status = 'approved', candidate_id = $1
        WHERE id = $2
-       RETURNING id, candidate_id, full_name, position, status`,
+       RETURNING id, candidate_id, full_name, email, position, status`,
       [candidateId, req.params.id]
     );
 
-    await client.query("COMMIT");
+    candidate = updated.rows[0];
 
-    return res.json({
-      message: "Candidate approved. Email delivery is not configured yet.",
-      candidate: updated.rows[0]
-    });
+    await client.query("COMMIT");
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
     console.error("Approval error:", error.message);
@@ -293,7 +293,42 @@ app.post("/api/admin/applications/:id/approve", requireAdmin, async (req, res) =
   } finally {
     client.release();
   }
+
+  if (mailer) {
+    try {
+      await mailer.sendMail({
+        from: `"KEBBI ELITE CIRCLE" <${process.env.GMAIL_USER}>`,
+        to: candidate.email,
+        subject: "Your KEC Candidate Application Has Been Approved",
+        text:
+          `Dear ${candidate.full_name},\n\n` +
+          `Your application for ${candidate.position} has been approved.\n\n` +
+          `Your Candidate ID is: ${candidate.candidate_id}\n\n` +
+          `Please keep this ID safe.\n\n` +
+          `KEBBI ELITE CIRCLE`
+      });
+
+      emailSent = true;
+    } catch (error) {
+      console.error("Candidate email failed:", error.message);
+    }
+  }
+
+  return res.json({
+    message: emailSent
+      ? "Candidate approved and Candidate ID emailed successfully."
+      : "Candidate approved, but email could not be sent. Check Gmail settings and Render logs.",
+    candidate: {
+      id: candidate.id,
+      candidate_id: candidate.candidate_id,
+      full_name: candidate.full_name,
+      position: candidate.position,
+      status: candidate.status
+    },
+    emailSent
+  });
 });
+
 
 /* ADMIN: REJECT APPLICATION */
 app.post("/api/admin/applications/:id/reject", requireAdmin, async (req, res) => {
