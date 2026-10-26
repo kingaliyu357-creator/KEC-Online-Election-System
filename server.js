@@ -1,8 +1,20 @@
-
 const express = require("express");
 const path = require("path");
 const { Pool } = require("pg");
 const crypto = require("crypto");
+
+const nodemailer = require("nodemailer");
+
+const mailer =
+  process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD
+    ? nodemailer.createTransport({
+        service: "gmail",
+        auth: {
+          user: process.env.GMAIL_USER,
+          pass: process.env.GMAIL_APP_PASSWORD.replace(/\s/g, "")
+        }
+      })
+    : null;
 
 const app = express();
 const PORT = process.env.PORT || 3000;
