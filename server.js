@@ -47,6 +47,53 @@ async function initializeDatabase() {
   `);
 }
 
+function createAdminToken() {
+  const expires = Date.now() + 8 * 60 * 60 * 1000;
+  const signature = crypto
+    .createHmac("sha256", process.env.ADMIN_PASSWORD)
+    .update(String(expires))
+    .digest("hex");
+
+  return `${expires}.${signature}`;
+}
+
+function requireAdmin(req, res, next) {
+  const password = process.env.ADMIN_PASSWORD;
+  const header = req.headers.authorization || "";
+  const token = header.replace(/^Bearer\s+/i, "");
+  const parts = token.split(".");
+  const expires = Number(parts[0]);
+  const signature = parts[1];
+
+  if (!password || !expires || !signature || Date.now() > expires) {
+    return res.status(401).json({
+      message: "Admin login required or session expired."
+    });
+  }
+
+  const expected = crypto
+    .createHmac("sha256", password)
+    .update(String(expires))
+    .digest();
+
+  let received;
+
+  try {
+    received = Buffer.from(signature, "hex");
+  } catch {
+    return res.status(401).json({ message: "Invalid admin session." });
+  }
+
+  if (
+    received.length !== expected.length ||
+    !crypto.timingSafeEqual(received, expected)
+  ) {
+    return res.status(401).json({ message: "Invalid admin session." });
+  }
+
+  next();
+}
+
 app.get("/api/health", (req, res) => {
   res.json({
     status: "ok",
@@ -67,6 +114,104 @@ app.get("/api/db-health", async (req, res) => {
     res.status(500).json({
       status: "error",
       message: "Database connection failed"
+    });
+  }
+});
+
+app.post("/api/admin/login", (req, res) => {
+  const expectedPassword = process.env.ADMIN_PASSWORD;
+  const suppliedPassword = req.body.password;
+
+  if (
+    !expectedPassword ||
+    typeof suppliedPassword !== "string" ||
+    suppliedPassword !== expectedPassword
+  ) {
+    return res.status(401).json({
+      message: "Incorrect admin password."
+    });
+  }
+
+  res.json({
+    message: "Admin login successful.",
+    token: createAdminToken()
+  });
+});
+
+app.get("/api/admin/applications", requireAdmin, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT id, full_name, email, phone, position,
+             contribution, status, created_at
+      FROM candidates
+      ORDER BY created_at DESC
+    `);
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error("Admin applications error:", error.message);
+    res.status(500).json({
+      message: "Unable to load applications."
+    });
+  }
+});
+
+app.post("/api/admin/applications/:id/approve", requireAdmin, async (req, res) => {
+  try {
+    const candidateId =
+      `KEC-${new Date().getFullYear()}-` +
+      crypto.randomBytes(4).toString("hex").toUpperCase();
+
+    const result = await pool.query(
+      `UPDATE candidates
+       SET status = 'approved', candidate_id = $1
+       WHERE id = $2 AND status = 'pending'
+       RETURNING id, candidate_id, full_name, position`,
+      [candidateId, req.params.id]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({
+        message: "Pending application not found."
+      });
+    }
+
+    res.json({
+      message: "Candidate approved. Email delivery is not configured yet.",
+      candidate: result.rows[0]
+    });
+  } catch (error) {
+    console.error("Approval error:", error.message);
+    res.status(500).json({
+      message: "Unable to approve candidate."
+    });
+  }
+});
+
+app.post("/api/admin/applications/:id/reject", requireAdmin, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `UPDATE candidates
+       SET status = 'rejected'
+       WHERE id = $1 AND status = 'pending'
+       RETURNING id, full_name, status`,
+      [req.params.id]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({
+        message: "Pending application not found."
+      });
+    }
+
+    res.json({
+      message: "Application rejected.",
+      application: result.rows[0]
+    });
+  } catch (error) {
+    console.error("Rejection error:", error.message);
+    res.status(500).json({
+      message: "Unable to reject application."
     });
   }
 });
@@ -137,4 +282,3 @@ initializeDatabase()
     console.error("Could not initialize database:", error.message);
     process.exit(1);
   });
-    
