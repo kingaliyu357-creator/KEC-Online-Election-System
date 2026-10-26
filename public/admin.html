@@ -1,0 +1,301 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KEC Admin Dashboard</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 20px;
+      font-family: Arial, sans-serif;
+      background: #f2f5f3;
+      color: #17251d;
+    }
+    .container {
+      max-width: 1000px;
+      margin: 25px auto;
+    }
+    .header {
+      background: #123d2b;
+      color: white;
+      padding: 22px;
+      border-radius: 12px;
+      margin-bottom: 20px;
+    }
+    .card {
+      background: white;
+      padding: 22px;
+      border-radius: 12px;
+      margin-bottom: 20px;
+      box-shadow: 0 3px 12px #0000000c;
+    }
+    input, button {
+      width: 100%;
+      padding: 12px;
+      margin-top: 10px;
+      border-radius: 7px;
+      font-size: 16px;
+    }
+    input { border: 1px solid #bbb; }
+    button {
+      border: 0;
+      background: #176b43;
+      color: white;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    button:disabled { opacity: .6; }
+    .hidden { display: none; }
+    .message { overflow-wrap: anywhere; }
+    .candidate {
+      border: 1px solid #ddd;
+      border-radius: 9px;
+      padding: 15px;
+      margin-top: 14px;
+    }
+    .candidate img {
+      width: 110px;
+      height: 110px;
+      object-fit: cover;
+      border-radius: 8px;
+      display: block;
+      margin: 10px 0;
+    }
+    .actions {
+      display: flex;
+      gap: 10px;
+    }
+    .actions button { flex: 1; }
+    .reject { background: #a72d2d; }
+    .logout { background: #555; }
+    @media (max-width: 500px) {
+      body { padding: 10px; }
+      .actions { flex-direction: column; gap: 0; }
+    }
+  </style>
+</head>
+<body>
+  <main class="container">
+    <header class="header">
+      <h1>KEC Admin Dashboard</h1>
+      <p>KEBBI ELITE CIRCLE ONLINE ELECTION SYSTEM</p>
+    </header>
+
+    <section class="card" id="login-card">
+      <h2>Admin Login</h2>
+      <p>Enter your admin password to continue.</p>
+      <form id="login-form">
+        <input
+          type="password"
+          id="password"
+          placeholder="Admin password"
+          required
+          autocomplete="current-password"
+        >
+        <button type="submit" id="login-button">Login</button>
+      </form>
+      <p id="login-message" class="message" role="status"></p>
+    </section>
+
+    <section class="card hidden" id="dashboard">
+      <h2>Candidate Applications</h2>
+      <p id="summary">Loading applications...</p>
+      <button type="button" id="refresh-button">Refresh Applications</button>
+      <button type="button" id="logout-button" class="logout">Logout</button>
+      <p id="dashboard-message" class="message" role="status"></p>
+      <div id="applications"></div>
+    </section>
+  </main>
+
+  <script>
+    const loginCard = document.getElementById("login-card");
+    const dashboard = document.getElementById("dashboard");
+    const loginForm = document.getElementById("login-form");
+    const loginMessage = document.getElementById("login-message");
+    const dashboardMessage = document.getElementById("dashboard-message");
+    const applications = document.getElementById("applications");
+    const summary = document.getElementById("summary");
+    const loginButton = document.getElementById("login-button");
+
+    let adminToken = "";
+
+    async function api(url, options = {}) {
+      const response = await fetch(url, {
+        ...options,
+        headers: {
+          ...(options.headers || {}),
+          ...(adminToken
+            ? { Authorization: "Bearer " + adminToken }
+            : {})
+        }
+      });
+
+      const text = await response.text();
+      let data;
+
+      try {
+        data = JSON.parse(text);
+      } catch {
+        throw new Error("Server returned an unexpected response. Check Render logs.");
+      }
+
+      if (!response.ok) {
+        throw new Error(data.message || "Request failed.");
+      }
+
+      return data;
+    }
+
+    loginForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      loginButton.disabled = true;
+      loginMessage.textContent = "Checking login...";
+
+      try {
+        const result = await api("/api/admin/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            password: document.getElementById("password").value
+          })
+        });
+
+        adminToken = result.token;
+
+        if (!adminToken) {
+          throw new Error("Server did not return an admin token.");
+        }
+
+        loginCard.classList.add("hidden");
+        dashboard.classList.remove("hidden");
+        document.getElementById("password").value = "";
+        await loadApplications();
+      } catch (error) {
+        loginMessage.textContent = error.message;
+      } finally {
+        loginButton.disabled = false;
+      }
+    });
+
+    async function loadApplications() {
+      applications.replaceChildren();
+      summary.textContent = "Loading applications...";
+      dashboardMessage.textContent = "";
+
+      try {
+        const result = await api("/api/admin/applications");
+        const list = Array.isArray(result)
+          ? result
+          : (result.applications || []);
+
+        summary.textContent = "Applications found: " + list.length;
+
+        if (list.length === 0) {
+          applications.textContent = "No applications found yet.";
+          return;
+        }
+
+        list.forEach((candidate) => {
+          const card = document.createElement("article");
+          card.className = "candidate";
+
+          const heading = document.createElement("h3");
+          heading.textContent = candidate.full_name || candidate.fullName || "Unnamed candidate";
+          card.appendChild(heading);
+
+          const details = [
+            ["Email", candidate.email],
+            ["Phone", candidate.phone],
+            ["Position", candidate.position],
+            ["Contribution", candidate.contribution],
+            ["Status", candidate.status],
+            ["Candidate ID", candidate.candidate_id || "Not assigned"]
+          ];
+
+          details.forEach(([label, value]) => {
+            const p = document.createElement("p");
+            p.textContent = label + ": " + (value ?? "Not provided");
+            card.appendChild(p);
+          });
+
+          const photo = candidate.photo_data || candidate.photo;
+          if (typeof photo === "string" && photo.startsWith("data:image/")) {
+            const img = document.createElement("img");
+            img.src = photo;
+            img.alt = "Candidate photograph";
+            card.appendChild(img);
+          }
+
+          if (candidate.status === "pending") {
+            const actions = document.createElement("div");
+            actions.className = "actions";
+
+            const approve = document.createElement("button");
+            approve.type = "button";
+            approve.textContent = "Approve";
+            approve.addEventListener("click", () =>
+              updateCandidate(candidate.id, "approve", approve)
+            );
+
+            const reject = document.createElement("button");
+            reject.type = "button";
+            reject.textContent = "Reject";
+            reject.className = "reject";
+            reject.addEventListener("click", () =>
+              updateCandidate(candidate.id, "reject", reject)
+            );
+
+            actions.append(approve, reject);
+            card.appendChild(actions);
+          }
+
+          applications.appendChild(card);
+        });
+      } catch (error) {
+        summary.textContent = "Could not load applications.";
+        dashboardMessage.textContent = error.message;
+      }
+    }
+
+    async function updateCandidate(id, action, button) {
+      if (!id) {
+        dashboardMessage.textContent = "Candidate record has no ID.";
+        return;
+      }
+
+      const verb = action === "approve" ? "approve" : "reject";
+      if (!confirm("Are you sure you want to " + verb + " this application?")) {
+        return;
+      }
+
+      button.disabled = true;
+      dashboardMessage.textContent = "Updating application...";
+
+      try {
+        await api("/api/admin/applications/" + encodeURIComponent(id) + "/" + action, {
+          method: "POST"
+        });
+
+        dashboardMessage.textContent = "Application updated.";
+        await loadApplications();
+      } catch (error) {
+        dashboardMessage.textContent = error.message;
+        button.disabled = false;
+      }
+    }
+
+    document.getElementById("refresh-button").addEventListener("click", loadApplications);
+
+    document.getElementById("logout-button").addEventListener("click", () => {
+      adminToken = "";
+      applications.replaceChildren();
+      dashboard.classList.add("hidden");
+      loginCard.classList.remove("hidden");
+      loginMessage.textContent = "You have logged out.";
+    });
+  </script>
+</body>
+</html>
