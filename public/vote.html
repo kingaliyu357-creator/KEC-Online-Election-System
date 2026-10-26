@@ -1,0 +1,310 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KEC Online Voting</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f3f5f8;
+      color: #17202a;
+    }
+    header {
+      background: #102b20;
+      color: white;
+      text-align: center;
+      padding: 26px 14px;
+    }
+    header h1 { margin: 0 0 8px; font-size: 25px; }
+    header p { margin: 0; color: #d6eadc; }
+    main { max-width: 900px; margin: 22px auto; padding: 0 14px; }
+    .panel {
+      background: white;
+      padding: 18px;
+      border-radius: 12px;
+      margin-bottom: 18px;
+      box-shadow: 0 2px 9px #0000000d;
+    }
+    label { display: block; font-weight: bold; margin: 12px 0 6px; }
+    input, select {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #ccd2d8;
+      border-radius: 8px;
+      font-size: 16px;
+      background: white;
+    }
+    .candidates {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 14px;
+    }
+    .candidate {
+      background: white;
+      padding: 14px;
+      border: 2px solid transparent;
+      border-radius: 12px;
+      box-shadow: 0 2px 9px #0000000d;
+    }
+    .candidate.selected { border-color: #16834a; }
+    .candidate img {
+      width: 100%;
+      height: 180px;
+      object-fit: cover;
+      border-radius: 8px;
+      background: #edf0f2;
+    }
+    .candidate h3 { margin: 10px 0 5px; }
+    .candidate p { margin: 5px 0 12px; color: #59636d; }
+    .candidate button, .submit {
+      width: 100%;
+      border: 0;
+      border-radius: 8px;
+      padding: 12px;
+      background: #167544;
+      color: white;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    .candidate button:disabled, .submit:disabled {
+      opacity: .6;
+      cursor: wait;
+    }
+    .candidate button.chosen { background: #102b20; }
+    #message { margin-top: 14px; font-weight: bold; }
+    .muted { color: #626d77; font-size: 14px; line-height: 1.5; }
+    footer { text-align: center; padding: 20px; color: #626d77; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>KEBBI ELITE CIRCLE</h1>
+    <p>ONLINE ELECTION — VOTING PORTAL</p>
+  </header>
+
+  <main>
+    <section class="panel">
+      <h2>Cast Your Vote</h2>
+      <p class="muted">Enter your email, choose a position, then select one approved candidate.</p>
+
+      <label for="email">Your Email Address</label>
+      <input id="email" type="email" autocomplete="email"
+             placeholder="Enter your email" maxlength="254" required>
+
+      <label for="position">Choose Position</label>
+      <select id="position">
+        <option value="">Loading positions...</option>
+      </select>
+
+      <p id="count" class="muted">Loading candidates...</p>
+      <div id="candidates" class="candidates"></div>
+
+      <div style="margin-top:18px">
+        <label for="confirm">Selected Candidate</label>
+        <input id="confirm" readonly placeholder="Select a candidate above">
+
+        <button id="submit" class="submit" style="margin-top:14px" disabled>
+          SUBMIT VOTE
+        </button>
+        <p id="message" role="status" aria-live="polite"></p>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Election Results</h2>
+      <p class="muted">Vote counts are shown below. Refresh to load the latest results.</p>
+      <button id="refresh" class="submit" type="button">Refresh Results</button>
+      <div id="results" style="margin-top:14px">Loading results...</div>
+    </section>
+  </main>
+
+  <footer>KEBBI ELITE CIRCLE • Online Election System</footer>
+
+  <script>
+    const API = window.location.origin;
+    const emailInput = document.getElementById("email");
+    const positionSelect = document.getElementById("position");
+    const candidatesBox = document.getElementById("candidates");
+    const countBox = document.getElementById("count");
+    const confirmBox = document.getElementById("confirm");
+    const submitButton = document.getElementById("submit");
+    const messageBox = document.getElementById("message");
+    const resultsBox = document.getElementById("results");
+
+    let candidates = [];
+    let selectedCandidate = null;
+    let busy = false;
+
+    function escapeHTML(value) {
+      return String(value ?? "").replace(/[&<>"']/g, ch => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;",
+        '"': "&quot;", "'": "&#39;"
+      })[ch]);
+    }
+
+    async function getJSON(url) {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error("Request failed (" + response.status + ")");
+      return response.json();
+    }
+
+    function clearSelection() {
+      selectedCandidate = null;
+      confirmBox.value = "";
+      submitButton.disabled = true;
+    }
+
+    function showCandidates() {
+      clearSelection();
+      const position = positionSelect.value;
+      const filtered = candidates.filter(c => c.position === position);
+
+      countBox.textContent = filtered.length
+        ? filtered.length + " approved candidate(s) for this position"
+        : "No approved candidates for this position yet.";
+
+      candidatesBox.replaceChildren();
+
+      filtered.forEach(candidate => {
+        const card = document.createElement("article");
+        card.className = "candidate";
+
+        const image = document.createElement("img");
+        image.alt = "Candidate photo";
+        image.src = candidate.photo_data || "";
+        if (!candidate.photo_data) image.style.display = "none";
+
+        const name = document.createElement("h3");
+        name.textContent = candidate.full_name;
+
+        const positionText = document.createElement("p");
+        positionText.textContent = candidate.position;
+
+        const idText = document.createElement("p");
+        idText.className = "muted";
+        idText.textContent = "Candidate ID: " + candidate.candidate_id;
+
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = "SELECT CANDIDATE";
+        button.addEventListener("click", () => {
+          selectedCandidate = candidate;
+          confirmBox.value = candidate.full_name + " — " + candidate.position;
+          submitButton.disabled = busy;
+          document.querySelectorAll(".candidate").forEach(el => el.classList.remove("selected"));
+          document.querySelectorAll(".candidate button").forEach(el => {
+            el.classList.remove("chosen");
+            el.textContent = "SELECT CANDIDATE";
+          });
+          card.classList.add("selected");
+          button.classList.add("chosen");
+          button.textContent = "SELECTED";
+          messageBox.textContent = "";
+        });
+
+        card.append(image, name, positionText, idText, button);
+        candidatesBox.appendChild(card);
+      });
+    }
+
+    async function loadCandidates() {
+      countBox.textContent = "Loading candidates...";
+      try {
+        candidates = await getJSON(API + "/api/candidates");
+        if (!Array.isArray(candidates)) throw new Error("Unexpected candidate data");
+
+        const positions = [...new Set(candidates.map(c => c.position).filter(Boolean))];
+        positionSelect.replaceChildren(new Option("Choose a position", ""));
+        positions.forEach(p => positionSelect.add(new Option(p, p)));
+
+        if (positions.length) positionSelect.value = positions[0];
+        showCandidates();
+      } catch (error) {
+        countBox.textContent = "Could not load candidates. Please refresh the page.";
+      }
+    }
+
+    async function loadResults() {
+      resultsBox.textContent = "Loading results...";
+      try {
+        const rows = await getJSON(API + "/api/results");
+        if (!Array.isArray(rows) || rows.length === 0) {
+          resultsBox.textContent = "No approved candidates or results yet.";
+          return;
+        }
+
+        resultsBox.replaceChildren();
+        rows.forEach(row => {
+          const item = document.createElement("p");
+          item.textContent = row.position + " — " + row.full_name +
+            ": " + Number(row.vote_count || 0) + " vote(s)";
+          resultsBox.appendChild(item);
+        });
+      } catch (error) {
+        resultsBox.textContent = "Could not load results. Please try again.";
+      }
+    }
+
+    positionSelect.addEventListener("change", showCandidates);
+
+    submitButton.addEventListener("click", async () => {
+      const email = emailInput.value.trim().toLowerCase();
+
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        messageBox.textContent = "Please enter a valid email address.";
+        return;
+      }
+      if (!selectedCandidate) {
+        messageBox.textContent = "Please select a candidate first.";
+        return;
+      }
+
+      const confirmed = window.confirm(
+        "Submit your vote for " + selectedCandidate.full_name +
+        " for " + selectedCandidate.position + "? This cannot be undone."
+      );
+      if (!confirmed) return;
+
+      busy = true;
+      submitButton.disabled = true;
+      submitButton.textContent = "Submitting...";
+      messageBox.textContent = "";
+
+      try {
+        const response = await fetch(API + "/api/vote", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email,
+            position: selectedCandidate.position,
+            candidate_id: selectedCandidate.id
+          })
+        });
+
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.message || "Vote submission failed.");
+
+        messageBox.textContent = data.message || "Vote submitted successfully.";
+        clearSelection();
+        await loadResults();
+      } catch (error) {
+        messageBox.textContent = error.message || "Unable to submit vote.";
+      } finally {
+        busy = false;
+        submitButton.textContent = "SUBMIT VOTE";
+        submitButton.disabled = !selectedCandidate;
+      }
+    });
+
+    document.getElementById("refresh").addEventListener("click", loadResults);
+
+    loadCandidates();
+    loadResults();
+  </script>
+</body>
+</html>
